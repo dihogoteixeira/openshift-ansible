@@ -1,4 +1,4 @@
-# openshift-ansible_stap-by-stap
+# openshift-ansible_step-by-step
 
 
 master 4 VCPU  16GB Ram 80 GB HDD
