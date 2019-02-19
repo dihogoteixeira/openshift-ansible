@@ -27,10 +27,12 @@ echo -e "$HOSTS" > /etc/hosts
 echo -e '192.168.10.2 master.okd.os\n192.168.10.3 node1.okd.os\n192.168.10.4 node2.okd.os' > /etc/hosts
 
 yum update -y
+
 yum install -y wget git zile nano net-tools docker-1.13.1 bind-utils iptables-services bridge-utils bash-completion 
 yum install -y kexec-tools sos psacct openssl-devel httpd-tools NetworkManager python-cryptography python2-pip python-devel python-passlib
 yum install -y java-1.8.0-openjdk-headless "@Development Tools"
 yum install -y curl vim device-mapper-persistent-data lvm2 epel-release wget git net-tools bind-utils yum-utils iptables-services bridge-utils bash-completion kexec-tools sos psacct docker-1.13.1-75.git8633870.el7.centos
+
 yum update -y
 
 cd /etc/yum.repos.d && curl -O https://storage.googleapis.com/origin-ci-test/releases/openshift/origin/master/origin.repo
