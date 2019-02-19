@@ -1,0 +1,1 @@
+# openshift-ansible_stap-by-stap
