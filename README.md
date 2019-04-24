@@ -1,134 +1,174 @@
-# openshift-ansible_step-by-step
+[![Join the chat at https://gitter.im/openshift/openshift-ansible](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/openshift/openshift-ansible)
+[![Build Status](https://travis-ci.org/openshift/openshift-ansible.svg?branch=master)](https://travis-ci.org/openshift/openshift-ansible)
+[![Coverage Status](https://coveralls.io/repos/github/openshift/openshift-ansible/badge.svg?branch=master)](https://coveralls.io/github/openshift/openshift-ansible?branch=master)
+
+# OpenShift Ansible
+
+This repository contains [Ansible](https://www.ansible.com/) roles and
+playbooks to install, upgrade, and manage
+[OpenShift](https://www.openshift.com/) clusters.
+
+**Note**: the Ansible playbooks in this repository require an RPM
+package that provides `docker`. Currently, the RPMs from
+[dockerproject.org](https://dockerproject.org/) do not provide this
+requirement, though they may in the future. This limitation is being
+tracked by
+[#2720](https://github.com/openshift/openshift-ansible/issues/2720).
+
+## Getting the correct version
+When choosing an openshift release, ensure that the necessary origin packages
+are available in your distribution's repository.  By default, openshift-ansible
+will not configure extra repositories for testing or staging packages for
+end users.
+
+We recommend using a release branch. We maintain stable branches
+corresponding to upstream Origin releases, e.g.: we guarantee an
+openshift-ansible 3.2 release will fully support an origin
+[1.2 release](https://github.com/openshift/openshift-ansible/tree/release-1.2).
+
+The most recent branch will often receive minor feature backports and
+fixes. Older branches will receive only critical fixes.
+
+In addition to the release branches, the master branch
+[master branch](https://github.com/openshift/openshift-ansible/tree/master)
+tracks our current work **in development** and should be compatible
+with the
+[Origin master branch](https://github.com/openshift/origin/tree/master)
+(code in development).
 
 
-master 4 VCPU  16GB Ram 80 GB HDD
-node1 2 VCPU  8GB Ram  80 GB HDD 
-node2 2 VCPU  8GB Ram  80 GB HDD
 
-############################################################################
-### PS: Configurar IP / HOSTNAME / SEARCH DOMAIN na instalação do CentOS ###
-############################################################################
+**Getting the right openshift-ansible release**
 
-### Prepare todos os Hosts - Master e Node:
+Follow this release pattern and you can't go wrong:
 
-hostnamectl set-hostname master.okd.os
-hostnamectl set-hostname node1.okd.os
-hostnamectl set-hostname node2.okd.os
+| Origin/OCP    | OpenShift-Ansible version | openshift-ansible branch |
+| ------------- | ----------------- |----------------------------------|
+| 1.3 / 3.3          | 3.3               | release-1.3 |
+| 1.4 / 3.4          | 3.4               | release-1.4 |
+| 1.5 / 3.5          | 3.5               | release-1.5 |
+| 3.*X*         | 3.*X*             | release-3.x |
 
-search okd.os
-nameserver 8.8.8.8
-
-hostname master.okd.os
-hostname node1.okd.os
-hostname node2.okd.os
-
-HOSTS="$(head -n3 /etc/hosts)"
-echo -e "$HOSTS" > /etc/hosts
-echo -e '192.168.10.2 master.okd.os\n192.168.10.3 node1.okd.os\n192.168.10.4 node2.okd.os' > /etc/hosts
-
-yum update -y
-
-yum install -y wget git zile nano net-tools docker-1.13.1 bind-utils iptables-services bridge-utils bash-completion 
-yum install -y kexec-tools sos psacct openssl-devel httpd-tools NetworkManager python-cryptography python2-pip python-devel python-passlib
-yum install -y java-1.8.0-openjdk-headless "@Development Tools"
-yum install -y curl vim device-mapper-persistent-data lvm2 epel-release wget git net-tools bind-utils yum-utils iptables-services bridge-utils bash-completion kexec-tools sos psacct docker-1.13.1-75.git8633870.el7.centos
-
-yum update -y
-
-cd /etc/yum.repos.d && curl -O https://storage.googleapis.com/origin-ci-test/releases/openshift/origin/master/origin.repo
-
-systemctl enable NetworkManager
-systemctl start  NetworkManager
-systemctl status NetworkManager
-
-############ Aplicar somente no Master ############
-
-ssh-keygen -t rsa
-ssh-copy-id root@master.okd.os
-ssh-copy-id root@node1.okd.os
-ssh-copy-id root@node2.okd.os
+If you're running from the openshift-ansible **master branch** we can
+only guarantee compatibility with the newest origin releases **in
+development**. Use a branch corresponding to your origin version if
+you are not running a stable release.
 
 
-mkdir -p /etc/origin/master
-touch /etc/origin/master/htpasswd
-htpasswd -b /etc/origin/master/htpasswd admin password
+## Setup
 
-cd ~
+Install base dependencies:
+
+Requirements:
+
+- Ansible >= 2.6, Ansible 2.7 is supported
+- Jinja >= 2.7
+- pyOpenSSL
+- python-lxml
+
+----
+
+Fedora:
+
+```
+dnf install -y ansible pyOpenSSL python-cryptography python-lxml
+```
+
+Additional requirements:
+
+Logging:
+
+- java-1.8.0-openjdk-headless
+- patch
+
+Metrics:
+
+- httpd-tools
+
+## Simple all-in-one localhost Installation
+This assumes that you've installed the base dependencies and you're running on
+Fedora or RHEL
+```
 git clone https://github.com/openshift/openshift-ansible
 cd openshift-ansible
-git checkout release-3.11
+sudo ansible-playbook -i inventory/hosts.localhost playbooks/prerequisites.yml
+sudo ansible-playbook -i inventory/hosts.localhost playbooks/deploy_cluster.yml
+```
+## Node Group Definition and Mapping
+In 3.10 and newer all members of the [nodes] inventory group must be assigned an
+`openshift_node_group_name`. This value is used to select the configmap that
+configures each node. By default there are three configmaps created; one for
+each node group defined in `openshift_node_groups` and they're named
+`node-config-master` `node-config-infra` `node-config-compute`. It's important
+to note that the configmap is also the authoritative definition of node labels,
+the old `openshift_node_labels` value is effectively ignored.
 
-curl -o ansible.rpm https://releases.ansible.com/ansible/rpm/release/epel-7-x86_64/ansible-2.6.5-1.el7.ans.noarch.rpm
-yum -y  install ansible.rpm
+There are also two configmaps that label nodes into multiple roles, these are
+not recommended for production clusters, however they're named
+`node-config-all-in-one` and `node-config-master-infra` if you'd like to use
+them to deploy non production clusters.
 
-##################################################
-### Iserir configuração no /etc/ansible/hosts: ###
-##################################################
+The default set of node groups is defined in
+[roles/openshift_facts/defaults/main.yml] like so
 
-[OSEv3:children]
-masters
-nodes
-etcd
+```
+openshift_node_groups:
+  - name: node-config-master
+    labels:
+      - 'node-role.kubernetes.io/master=true'
+    edits: []
+  - name: node-config-infra
+    labels:
+      - 'node-role.kubernetes.io/infra=true'
+    edits: []
+  - name: node-config-compute
+    labels:
+      - 'node-role.kubernetes.io/compute=true'
+    edits: []
+  - name: node-config-master-infra
+    labels:
+      - 'node-role.kubernetes.io/infra=true,node-role.kubernetes.io/master=true'
+    edits: []
+  - name: node-config-all-in-one
+    labels:
+      - 'node-role.kubernetes.io/infra=true,node-role.kubernetes.io/master=true,node-role.kubernetes.io/compute=true'
+    edits: []
+```
 
-[OSEv3:vars]
-ansible_ssh_user=root
-openshift_deployment_type=origin
-openshift_enable_olm=false
-openshift_release=3.11
-openshift_cluster_monitoring_operator_install=false
-openshift_metrics_install_metrics=false
-openshift_logging_install_logging=false
-ansible_service_broker_install=false
-template_service_broker_install=false
-openshift_disable_check=disk_availability,memory_availability,docker_storage
-openshift_disable_check=package_version
+When configuring this in the INI based inventory this must be translated into a
+Python dictionary. Here's an example of a group named `node-config-all-in-one`
+which is suitable for an All-In-One installation with
+kubeletArguments.pods-per-core set to 20
 
-[masters]
-master.okd.os
+```
+openshift_node_groups=[{'name': 'node-config-all-in-one', 'labels': ['node-role.kubernetes.io/master=true', 'node-role.kubernetes.io/infra=true', 'node-role.kubernetes.io/compute=true'], 'edits': [{ 'key': 'kubeletArguments.pods-per-core','value': ['20']}]}]
+```
 
-[etcd]
-master.okd.os
-
-[nodes]
-master.okd.os openshift_node_group_name='node-config-master-infra' openshift_ip='192.168.10.2' openshift_public_ip='192.168.10.2' openshift_public_hostname='master.okd.os'
-node1.okd.os openshift_node_group_name='node-config-compute' openshift_ip='192.168.10.3' openshift_public_ip='192.168.10.3' openshift_public_hostname='node1.okd.os'
-node2.okd.os openshift_node_group_name='node-config-compute' openshift_ip='192.168.10.4' openshift_public_ip='192.168.10.4' openshift_public_hostname='node2.okd.os'
-
-##################################################
-
---------------------------------------------------------------------
-Master imagens (Aplicar somente no master):
-
-docker pull docker.io/cockpit/kubernetes
-docker pull docker.io/openshift/origin-deployer:v3.11
-docker pull docker.io/openshift/origin-docker-registry:v3.11
-docker pull docker.io/openshift/origin-haproxy-router:v3.11
-docker pull docker.io/openshift/origin-pod:v3.11
-
-docker pull docker.io/openshift/origin-control-plane:v3.11
-docker pull quay.io/coreos/etcd:v3.2.22
-
-
-Nodes imagens:
-
-docker pull docker.io/cockpit/kubernetes
-docker pull docker.io/openshift/origin-deployer:v3.11
-docker pull docker.io/openshift/origin-docker-registry:v3.11
-docker pull docker.io/openshift/origin-haproxy-router:v3.11
-docker pull docker.io/openshift/origin-pod:v3.11
-
---------------------------------------------------------------------
-
-# Executar no local em que foi feito o clone do repositório 'openshift-ansible' no meu caso em /root/
-
-ansible-playbook openshift-ansible/playbooks/prerequisites.yml
-ansible-playbook openshift-ansible/playbooks/deploy_cluster.yml
+For upgrades, the upgrade process will block until you have the required
+configmaps in the openshift-node namespace. Please define
+`openshift_node_groups` as explained above or accept the defaults and run the
+playbooks/openshift-master/openshift_node_group.yml playbook to have them
+created for you automatically.
 
 
-# Em caso de falha remover com playbook: 
+## Complete Production Installation Documentation:
 
-ansible-playbook openshift-ansible/playbooks/adhoc/uninstall.yml
+- [OpenShift Container Platform](https://docs.openshift.com/container-platform/3.11/install/index.html)
+- [OKD](https://docs.okd.io/3.11/install/index.html) (formerly OpenShift Origin)
 
 
+## Containerized OpenShift Ansible
 
---------------------------------------------------------------------
+See [README_CONTAINER_IMAGE.md](README_CONTAINER_IMAGE.md) for information on how to package openshift-ansible as a container image.
+
+## Installer Hooks
+
+See the [hooks documentation](HOOKS.md).
+
+## Contributing
+
+See the [contribution guide](CONTRIBUTING.md).
+
+## Building openshift-ansible RPMs and container images
+
+See the [build instructions](BUILD.md).
